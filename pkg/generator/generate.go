@@ -525,6 +525,20 @@ func (g *schemaGenerator) generateDeclaredType(
 
 func (g *schemaGenerator) generateType(
 	t *schemas.Type, scope nameScope) (codegen.Type, error) {
+
+	var existingType codegen.Type
+	for _, allOfType := range t.AllOf {
+		generatedType, err := g.generateType(allOfType, scope)
+		if err != nil {
+			return nil, err
+		}
+
+		existingType, err = codegen.MergeType(existingType, generatedType)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if ext := t.GoJSONSchemaExtension; ext != nil {
 		for _, pkg := range ext.Imports {
 			g.output.file.Package.AddImport(pkg, "")
@@ -533,6 +547,7 @@ func (g *schemaGenerator) generateType(
 			return &codegen.CustomNameType{Type: *ext.Type}, nil
 		}
 	}
+
 	if t.Enum != nil {
 		return g.generateEnumType(t, scope)
 	}
@@ -559,7 +574,12 @@ func (g *schemaGenerator) generateType(
 		}
 		return codegen.ArrayType{Type: elemType}, nil
 	case schemas.TypeNameObject:
-		return g.generateStructType(t, scope)
+		sType, err := g.generateStructType(t, scope)
+		if err != nil {
+			return nil, err
+		}
+
+		return codegen.MergeType(sType, existingType)
 	case schemas.TypeNameNull:
 		return codegen.EmptyInterfaceType{}, nil
 	default:
